@@ -1,0 +1,100 @@
+import * as webpack from 'webpack'
+import { getOptions, stringifyRequest } from 'loader-utils'
+import { AppConfig } from '@tarojs/taro'
+import { join, dirname } from 'path'
+import { readConfig } from '@tarojs/helper'
+
+function genResource (path: string, pages: Map<string, string>, loaderContext: webpack.loader.LoaderContext) {
+  const stringify = (s: string): string => stringifyRequest(loaderContext, s)
+  return `
+  Object.assign({
+      path: '${path}',
+      load: function() {
+          return import(${stringify(join(loaderContext.context, path))})
+      }
+  }, ${JSON.stringify(readConfig(pages.get(path)!))}),
+`
+}
+
+export default function (this: webpack.loader.LoaderContext) {
+  const options = getOptions(this)
+  const stringify = (s: string): string => stringifyRequest(this, s)
+  const {
+    importFrameworkStatement,
+    frameworkArgs,
+    creator,
+    creatorLocation,
+    importFrameworkName,
+    extraImportForWeb,
+    execBeforeCreateWebApp,
+    compatComponentImport,
+    compatComponentExtra
+  } = options.loaderMeta
+  const config: AppConfig = options.config
+  const pages: Map<string, string> = options.pages
+  const pxTransformConfig = options.pxTransformConfig
+  let tabBarCode = `var tabbarIconPath = []
+var tabbarSelectedIconPath = []
+`
+  if (config.tabBar) {
+    const tabbarList = config.tabBar.list
+    for (let i = 0; i < tabbarList.length; i++) {
+      const t = tabbarList[i]
+      if (t.iconPath) {
+        const iconPath = stringify(join(dirname(this.resourcePath), t.iconPath))
+        tabBarCode += `tabbarIconPath[${i}] = typeof require(${iconPath}) === 'object' ? require(${iconPath}).default : require(${iconPath})\n`
+      }
+      if (t.selectedIconPath) {
+        const iconPath = stringify(join(dirname(this.resourcePath), t.selectedIconPath))
+        tabBarCode += `tabbarSelectedIconPath[${i}] = typeof require(${iconPath}) === 'object' ? require(${iconPath}).default : require(${iconPath})\n`
+      }
+    }
+  }
+
+  const webComponents = `
+import { defineCustomElements, applyPolyfills } from '@tarojs/components/loader'
+import '@tarojs/components/dist/taro-components/taro-components.css'
+${extraImportForWeb || ''}
+applyPolyfills().then(function () {
+  defineCustomElements(window)
+})
+`
+
+  const components = options.useHtmlComponents ? compatComponentImport || '' : webComponents
+
+  const code = `import { createRouter, initPxTransform } from '@tarojs/taro'
+import component from ${stringify(join(dirname(this.resourcePath), options.filename))}
+import { window } from '@tarojs/runtime'
+import { ${creator} } from '${creatorLocation}'
+${importFrameworkStatement}
+${components}
+var config = ${JSON.stringify(config)}
+window.__taroAppConfig = config
+${config.tabBar ? tabBarCode : ''}
+if (config.tabBar) {
+  var tabbarList = config.tabBar.list
+  for (var i = 0; i < tabbarList.length; i++) {
+    var t = tabbarList[i]
+    if (t.iconPath) {
+      t.iconPath = tabbarIconPath[i]
+    }
+    if (t.selectedIconPath) {
+      t.selectedIconPath = tabbarSelectedIconPath[i]
+    }
+  }
+}
+config.routes = [
+  ${config.pages?.map(path => genResource(path, pages, this)).join('')}
+]
+${options.useHtmlComponents ? compatComponentExtra : ''}
+${execBeforeCreateWebApp || ''}
+var inst = ${creator}(component, ${frameworkArgs})
+createRouter(inst, config, ${importFrameworkName})
+initPxTransform({
+  designWidth: ${pxTransformConfig.designWidth},
+  deviceRatio: ${JSON.stringify(pxTransformConfig.deviceRatio)}
+})
+`
+
+  return code
+}

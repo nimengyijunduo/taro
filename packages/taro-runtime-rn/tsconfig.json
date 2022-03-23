@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.root.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "sourceMap": true,
+    "rootDir": "./src",
+    "jsx": "react",
+    "lib": ["ESNEXT"],
+    "types": ["react-native", "node"]
+  },
+  "include": [
+    "src"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.root.json",
+  "include": [
+    "src/**/*",
+    "./types"
+  ],
+  "exclude": ["src/__tests__/**"],
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "jsx": "react",
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types"
+    ]
+  }
+}
